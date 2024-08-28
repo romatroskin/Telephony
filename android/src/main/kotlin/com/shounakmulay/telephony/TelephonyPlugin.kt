@@ -66,8 +66,8 @@ class TelephonyPlugin : FlutterPlugin, ActivityAware {
   }
 
   private fun tearDownPlugin() {
-    IncomingSmsReceiver.foregroundSmsChannel = null
-    smsChannel.setMethodCallHandler(null)
+    // IncomingSmsReceiver.foregroundSmsChannel = null
+    // smsChannel.setMethodCallHandler(null)
   }
 
 }
