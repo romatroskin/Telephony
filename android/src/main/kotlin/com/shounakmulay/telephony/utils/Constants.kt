@@ -32,7 +32,9 @@ object Constants {
 
   // Methods
   const val ON_MESSAGE = "onMessage"
+  const val ON_NOTIFICATION = "onNotification"
   const val HANDLE_BACKGROUND_MESSAGE = "handleBackgroundMessage"
+  const val HANDLE_WORKMANAGER_MESSAGE = "handleWorkManagerMessage"
   const val SMS_SENT = "smsSent"
   const val SMS_DELIVERED = "smsDelivered"
   
@@ -53,10 +55,12 @@ object Constants {
 
   const val TIMESTAMP = "timestamp"
   const val ORIGINATING_ADDRESS = "originating_address"
+  const val SUBJECT = "subject"
   const val STATUS = "status"
 
   const val SETUP_HANDLE = "setupHandle"
   const val BACKGROUND_HANDLE = "backgroundHandle"
+  const val WORKMANAGER_HANDLE = "workManagerHandle"
 
   const val PHONE_NUMBER = "phoneNumber"
 
@@ -77,9 +81,11 @@ object Constants {
   const val SMS_BODY = "sms_body"
   
   // Shared Preferences
-  const val SHARED_PREFERENCES_NAME = "com.shounakmulay.android_telephony_plugin"
+//  const val SHARED_PREFERENCES_NAME = "com.shounakmulay.android_telephony_plugin"
+  const val SHARED_PREFERENCES_NAME = "FlutterSharedPreferences"
   const val SHARED_PREFS_BACKGROUND_SETUP_HANDLE = "background_setup_handle"
   const val SHARED_PREFS_BACKGROUND_MESSAGE_HANDLE = "background_message_handle"
+  const val SHARED_PREFS_WORKMANAGER_HANDLE = "workmanager_handle"
   const val SHARED_PREFS_DISABLE_BACKGROUND_EXE = "disable_background"
 
 }

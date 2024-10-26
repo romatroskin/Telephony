@@ -31,8 +31,13 @@ const REQUEST_PHONE_PERMISSION = "requestPhonePermissions";
 const REQUEST_PHONE_AND_SMS_PERMISSION = "requestPhoneAndSmsPermissions";
 const OPEN_DIALER = "openDialer";
 const DIAL_PHONE_NUMBER = "dialPhoneNumber";
+const SET_AS_DEFAULT_SMS_APP = "setAsDefaultSmsApp";
+const GET_DEFAULT_SMS_APP = "getDefaultSmsApp";
+const GET_NOTIFICATION_PERMISSION = "getNotificationPermission";
+const SET_NOTIFICATION_PERMISSION = "setNotificationPermission";
 
 const ON_MESSAGE = "onMessage";
+const ON_NOTIFICATION = "onNotification";
 const SMS_SENT = "smsSent";
 const SMS_DELIVERED = "smsDelivered";
 
@@ -148,7 +153,10 @@ const INCOMING_SMS_COLUMNS = [
   SmsColumn._(_SmsProjections.MESSAGE_BODY),
   SmsColumn._(_SmsProjections.TIMESTAMP),
   SmsColumn._(_SmsProjections.SERVICE_CENTER_ADDRESS),
-  SmsColumn.STATUS
+  SmsColumn.STATUS,
+  SmsColumn.SUBJECT,
+  SmsColumn._("EXTRA"),
+  SmsColumn._("NOTIFICATION")
 ];
 
 const DEFAULT_CONVERSATION_COLUMNS = [

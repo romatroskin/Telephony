@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ui';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -12,30 +13,37 @@ part 'filter.dart';
 typedef MessageHandler(SmsMessage message);
 typedef SmsSendStatusListener(SendStatus status);
 
+const MethodChannel _kBackgroundChannel =
+    const MethodChannel(_BACKGROUND_CHANNEL);
+
 @pragma('vm:entry-point')
-void _flutterSmsSetupBackgroundChannel(
-    {MethodChannel backgroundChannel =
-        const MethodChannel(_BACKGROUND_CHANNEL)}) async {
+void _flutterSmsSetupBackgroundChannel() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  backgroundChannel.setMethodCallHandler((call) async {
+  _kBackgroundChannel.setMethodCallHandler((call) async {
+    print(call.method);
+    final CallbackHandle handle =
+        CallbackHandle.fromRawHandle(call.arguments['handle']);
+    final Function handlerFunction =
+        PluginUtilities.getCallbackFromHandle(handle)!;
     if (call.method == HANDLE_BACKGROUND_MESSAGE) {
-      final CallbackHandle handle =
-          CallbackHandle.fromRawHandle(call.arguments['handle']);
-      final Function handlerFunction =
-          PluginUtilities.getCallbackFromHandle(handle)!;
       try {
         await handlerFunction(SmsMessage.fromMap(
             call.arguments['message'], INCOMING_SMS_COLUMNS));
-      } catch (e) {
+      } catch (e, s) {
+        print(s);
         print('Unable to handle incoming background message.');
         print(e);
       }
       return Future<void>.value();
+    } else if (call.method == "handleWorkManagerMessage") {
+      final inputData = call.arguments['inputData'];
+      final taskName = call.arguments['taskName'];
+      return handlerFunction(inputData, taskName);
     }
   });
 
-  backgroundChannel.invokeMethod<void>(BACKGROUND_SERVICE_INITIALIZED);
+  _kBackgroundChannel.invokeMethod<void>(BACKGROUND_SERVICE_INITIALIZED);
 }
 
 ///
@@ -55,6 +63,7 @@ class Telephony {
 
   late MessageHandler _onNewMessage;
   late MessageHandler _onBackgroundMessages;
+  late Function(dynamic, String) _workManagerCallbackHandler;
   late SmsSendStatusListener _statusListener;
 
   ///
@@ -100,6 +109,7 @@ class Telephony {
   void listenIncomingSms(
       {required MessageHandler onNewMessage,
       MessageHandler? onBackgroundMessage,
+      Function(dynamic, String)? workManagerCallbackHandler,
       bool listenInBackground = true}) {
     assert(_platform.isAndroid == true, "Can only be called on Android.");
     assert(
@@ -111,13 +121,20 @@ class Telephony {
             : "You have set `listenInBackground` to false. `onBackgroundMessage` can only be set when `listenInBackground` is true");
 
     _onNewMessage = onNewMessage;
+    // _onNewNotification = onNewNotification;
 
-    if (listenInBackground && onBackgroundMessage != null) {
+    if (listenInBackground &&
+        onBackgroundMessage != null &&
+        workManagerCallbackHandler != null) {
       _onBackgroundMessages = onBackgroundMessage;
+      _workManagerCallbackHandler = workManagerCallbackHandler;
+
       final CallbackHandle backgroundSetupHandle =
           PluginUtilities.getCallbackHandle(_flutterSmsSetupBackgroundChannel)!;
       final CallbackHandle? backgroundMessageHandle =
           PluginUtilities.getCallbackHandle(_onBackgroundMessages);
+      final CallbackHandle? workManagerCallbackHandle =
+          PluginUtilities.getCallbackHandle(_workManagerCallbackHandler);
 
       if (backgroundMessageHandle == null) {
         throw ArgumentError(
@@ -131,7 +148,8 @@ class Telephony {
         'startBackgroundService',
         <String, dynamic>{
           'setupHandle': backgroundSetupHandle.toRawHandle(),
-          'backgroundHandle': backgroundMessageHandle.toRawHandle()
+          'backgroundHandle': backgroundMessageHandle.toRawHandle(),
+          'workManagerHandle': workManagerCallbackHandle!.toRawHandle()
         },
       );
     } else {
@@ -146,6 +164,10 @@ class Telephony {
       case ON_MESSAGE:
         final message = call.arguments["message"];
         return _onNewMessage(SmsMessage.fromMap(message, INCOMING_SMS_COLUMNS));
+      // case ON_NOTIFICATION:
+      //   final message = call.arguments["message"];
+      //   return _onNewNotification(
+      //       SmsMessage.fromMap(message, INCOMING_SMS_COLUMNS));
       case SMS_SENT:
         return _statusListener(SendStatus.SENT);
       case SMS_DELIVERED:
@@ -558,6 +580,52 @@ class Telephony {
     final Map<String, dynamic> args = {"phoneNumber": phoneNumber};
     await _foregroundChannel.invokeMethod(DIAL_PHONE_NUMBER, args);
   }
+
+  ///
+  /// Set your app as Android's default SMS application.
+  ///
+  /// ### Requires SEND_SMS permission.
+  ///
+  Future<bool?> setAsDefaultSmsApp() async {
+    return await _foregroundChannel.invokeMethod(SET_AS_DEFAULT_SMS_APP);
+  }
+
+  ///
+  /// Get Android's default SMS application.
+  ///
+  Future<String?> get defaultSmsApp =>
+      _foregroundChannel.invokeMethod<String?>(GET_DEFAULT_SMS_APP);
+
+  ///
+  /// Opens the notification permissions dialog.
+  ///
+  Future<void> openNotificationsPermissionsDialog() async {
+    return await _foregroundChannel
+        .invokeMethod<void>(SET_NOTIFICATION_PERMISSION);
+  }
+
+  ///
+  /// Check if notification permissions are granted.
+  ///
+  Future<bool?> get hasNotificationPermissions =>
+      _foregroundChannel.invokeMethod<bool?>(GET_NOTIFICATION_PERMISSION);
+
+  Future<void> runWorkManagertask(
+    final String uniqueName,
+    final String taskName, {
+    final Map<String, dynamic>? inputData,
+  }) async {
+    return await _foregroundChannel.invokeMethod<void>("runWorkManagerTask", {
+      "uniqueName": uniqueName,
+      "taskName": taskName,
+      "inputData": jsonEncode(inputData),
+    });
+  }
+
+  Future<void> cancelWorkManagerTasks() async {
+    return await _foregroundChannel
+        .invokeMethod<void>("cancelWorkManagerTasks");
+  }
 }
 
 ///
@@ -577,6 +645,8 @@ class SmsMessage {
   SmsType? type;
   SmsStatus? status;
   String? serviceCenterAddress;
+  String? extra;
+  String? notification;
 
   /// ## Do not call this method. This method is visible only for testing.
   @visibleForTesting
@@ -643,6 +713,12 @@ class SmsMessage {
           break;
         case _SmsProjections.SERVICE_CENTER_ADDRESS:
           this.serviceCenterAddress = value;
+          break;
+        case "EXTRA":
+          this.extra = value;
+          break;
+        case "NOTIFICATION":
+          this.notification = value;
           break;
       }
     }

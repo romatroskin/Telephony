@@ -8,18 +8,26 @@ import android.content.Intent
 import android.os.Process
 import android.provider.Telephony
 import android.telephony.SmsMessage
+import android.util.Log
+import androidx.concurrent.futures.CallbackToFutureAdapter
+import androidx.work.ListenableWorker.Result
+import com.shounakmulay.telephony.sms.IncomingSmsHandler.initialize
+import com.shounakmulay.telephony.sms.IncomingSmsHandler.startBackgroundIsolate
 import com.shounakmulay.telephony.utils.Constants
 import com.shounakmulay.telephony.utils.Constants.HANDLE
 import com.shounakmulay.telephony.utils.Constants.HANDLE_BACKGROUND_MESSAGE
+import com.shounakmulay.telephony.utils.Constants.HANDLE_WORKMANAGER_MESSAGE
 import com.shounakmulay.telephony.utils.Constants.MESSAGE
 import com.shounakmulay.telephony.utils.Constants.MESSAGE_BODY
 import com.shounakmulay.telephony.utils.Constants.ON_MESSAGE
+import com.shounakmulay.telephony.utils.Constants.ON_NOTIFICATION
 import com.shounakmulay.telephony.utils.Constants.ORIGINATING_ADDRESS
 import com.shounakmulay.telephony.utils.Constants.SERVICE_CENTER_ADDRESS
 import com.shounakmulay.telephony.utils.Constants.SHARED_PREFERENCES_NAME
 import com.shounakmulay.telephony.utils.Constants.SHARED_PREFS_BACKGROUND_MESSAGE_HANDLE
 import com.shounakmulay.telephony.utils.Constants.SHARED_PREFS_BACKGROUND_SETUP_HANDLE
 import com.shounakmulay.telephony.utils.Constants.SHARED_PREFS_DISABLE_BACKGROUND_EXE
+import com.shounakmulay.telephony.utils.Constants.SHARED_PREFS_WORKMANAGER_HANDLE
 import com.shounakmulay.telephony.utils.Constants.STATUS
 import com.shounakmulay.telephony.utils.Constants.TIMESTAMP
 import com.shounakmulay.telephony.utils.SmsAction
@@ -45,8 +53,8 @@ class IncomingSmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         ContextHolder.applicationContext = context.applicationContext
         val smsList = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-        val messagesGroupedByOriginatingAddress = smsList.groupBy { it.originatingAddress }
-        messagesGroupedByOriginatingAddress.forEach { group ->
+        val messagesGroupedByOriginatingAddress = smsList?.groupBy { it.originatingAddress }
+        messagesGroupedByOriginatingAddress?.forEach { group ->
             processIncomingSms(context, group.value)
         }
     }
@@ -72,6 +80,10 @@ class IncomingSmsReceiver : BroadcastReceiver() {
         if (IncomingSmsHandler.isApplicationForeground(context)) {
             val args = HashMap<String, Any>()
             args[MESSAGE] = messageMap
+            Log.i("SMS Handler", "SMS Handler: $messageMap")
+            ///
+
+            ///
             foregroundSmsChannel?.invokeMethod(ON_MESSAGE, args)
         } else {
             val preferences =
@@ -80,6 +92,49 @@ class IncomingSmsReceiver : BroadcastReceiver() {
                 preferences.getBoolean(SHARED_PREFS_DISABLE_BACKGROUND_EXE, false)
             if (!disableBackground) {
                 processInBackground(context, messageMap)
+            }
+        }
+    }
+
+    private fun processInBackground(context: Context, sms: HashMap<String, Any?>) {
+        IncomingSmsHandler.apply {
+            if (!isIsolateRunning.get()) {
+                initialize(context)
+                val preferences =
+                    context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
+                val backgroundCallbackHandle =
+                    preferences.getLong(SHARED_PREFS_BACKGROUND_SETUP_HANDLE, 0)
+                startBackgroundIsolate(context, backgroundCallbackHandle)
+                backgroundMessageQueue.add(sms)
+            } else {
+                executeDartCallbackInBackgroundIsolate(context, sms)
+            }
+        }
+    }
+}
+
+class IncomingNotificationReceiver : BroadcastReceiver() {
+//
+//    companion object {
+//        var foregroundSmsChannel: MethodChannel? = null
+//    }
+
+    override fun onReceive(context: Context, intent: Intent?) {
+        ContextHolder.applicationContext = context.applicationContext
+        val notificationData = intent?.getSerializableExtra("notification_data") as? HashMap<String, Any?>
+        if (IncomingSmsHandler.isApplicationForeground(context)) {
+            Log.i("IncomingNotificationReceiver", "FOREGROUND NOTIFICATION")
+            val args = HashMap<String, Any>()
+            args[MESSAGE] = notificationData!!
+            IncomingSmsReceiver.foregroundSmsChannel?.invokeMethod(ON_MESSAGE, args)
+        } else {
+            val preferences =
+                context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
+            val disableBackground =
+                preferences.getBoolean(SHARED_PREFS_DISABLE_BACKGROUND_EXE, false)
+            if (!disableBackground) {
+                Log.i("IncomingNotificationReceiver", "BACKGROUND NOTIFICATION")
+                processInBackground(context, notificationData!!)
             }
         }
     }
@@ -116,6 +171,8 @@ fun SmsMessage.toMap(): HashMap<String, Any?> {
     return smsMap
 }
 
+
+
 /**
  * Handle all the background processing on received SMS
  *
@@ -136,6 +193,7 @@ object IncomingSmsHandler : MethodChannel.MethodCallHandler {
     private lateinit var flutterLoader: FlutterLoader
 
     private var backgroundMessageHandle: Long? = null
+    private var workManagerHandle: Long? = null
 
     /**
      * Initializes a background flutter execution environment and executes the callback
@@ -181,6 +239,49 @@ object IncomingSmsHandler : MethodChannel.MethodCallHandler {
     /**
      * Invoke the method on background channel to handle the message
      */
+    internal fun executeWorkManagerCallbackInBackgroundIsolate(
+        context: Context,
+        inputData: String,
+        taskName: String,
+        completer: CallbackToFutureAdapter.Completer<Result>?,
+    ) {
+        if (!this::backgroundChannel.isInitialized) {
+            throw RuntimeException(
+                "setBackgroundChannel was not called before messages came in, exiting."
+            )
+        }
+
+        val args: MutableMap<String, Any?> = HashMap()
+        if (workManagerHandle == null) {
+            workManagerHandle = getWorkManagerHandle(context)
+        }
+        args[HANDLE] = workManagerHandle
+        args["inputData"] = inputData
+        args["taskName"] = taskName
+        backgroundChannel.invokeMethod(HANDLE_WORKMANAGER_MESSAGE, args,
+            object : MethodChannel.Result {
+                override fun notImplemented() {
+                    completer?.set(Result.failure())
+                }
+
+                override fun error(
+                    errorCode: String,
+                    errorMessage: String?,
+                    errorDetails: Any?,
+                ) {
+                    completer?.set(Result.failure())
+                }
+
+                override fun success(receivedResult: Any?) {
+                    val wasSuccessFul = receivedResult?.let { it as Boolean? } == true
+                    completer?.set(if (wasSuccessFul) Result.success() else Result.retry() )
+                }
+            })
+    }
+
+    /**
+     * Invoke the method on background channel to handle the message
+     */
     internal fun executeDartCallbackInBackgroundIsolate(
         context: Context,
         message: HashMap<String, Any?>
@@ -213,6 +314,15 @@ object IncomingSmsHandler : MethodChannel.MethodCallHandler {
         flutterLoader.ensureInitializationComplete(context.applicationContext, null)
     }
 
+    fun setWorkManagerHandle(context: Context, handle: Long) {
+        workManagerHandle = handle
+
+        // Store work manager handle in shared preferences so it can be retrieved
+        // by other application instances.
+        val preferences = context.getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
+        preferences.edit().putLong(SHARED_PREFS_WORKMANAGER_HANDLE, handle).apply()
+    }
+
     fun setBackgroundMessageHandle(context: Context, handle: Long) {
         backgroundMessageHandle = handle
 
@@ -237,6 +347,12 @@ object IncomingSmsHandler : MethodChannel.MethodCallHandler {
         return context
             .getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
             .getLong(SHARED_PREFS_BACKGROUND_MESSAGE_HANDLE, 0)
+    }
+
+    private fun getWorkManagerHandle(context: Context): Long {
+        return context
+            .getSharedPreferences(SHARED_PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .getLong(SHARED_PREFS_WORKMANAGER_HANDLE, 0)
     }
 
     fun isApplicationForeground(context: Context): Boolean {

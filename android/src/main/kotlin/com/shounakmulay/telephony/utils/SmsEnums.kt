@@ -33,6 +33,12 @@ enum class SmsAction(private val methodName: String) {
   REQUEST_PHONE_AND_SMS_PERMISSIONS("requestPhoneAndSmsPermissions"),
   OPEN_DIALER("openDialer"),
   DIAL_PHONE_NUMBER("dialPhoneNumber"),
+  SET_AS_DEFAULT_SMS_APP("setAsDefaultSmsApp"),
+  GET_DEFAULT_SMS_APP("getDefaultSmsApp"),
+  SET_NOTIFICATION_PERMISSION("setNotificationPermission"),
+  GET_NOTIFICATION_PERMISSION("getNotificationPermission"),
+  RUN_WORKMANAGER_TASK("runWorkManagerTask"),
+  CANCEL_WORKMANAGER_TASKS("cancelWorkManagerTasks"),
   NO_SUCH_METHOD("noSuchMethod");
 
   companion object {
@@ -56,6 +62,7 @@ enum class SmsAction(private val methodName: String) {
       SEND_MULTIPART_SMS,
       SEND_SMS_INTENT,
       NO_SUCH_METHOD -> ActionType.SEND_SMS
+      RUN_WORKMANAGER_TASK,
       START_BACKGROUND_SERVICE,
       DISABLE_BACKGROUND_SERVICE,
       BACKGROUND_SERVICE_INITIALIZED -> ActionType.BACKGROUND
@@ -72,18 +79,23 @@ enum class SmsAction(private val methodName: String) {
       GET_SIM_STATE,
       GET_SERVICE_STATE,
       GET_SIGNAL_STRENGTH,
+      GET_DEFAULT_SMS_APP,
       IS_NETWORK_ROAMING -> ActionType.GET
       REQUEST_SMS_PERMISSIONS,
       REQUEST_PHONE_PERMISSIONS,
       REQUEST_PHONE_AND_SMS_PERMISSIONS -> ActionType.PERMISSION
       OPEN_DIALER,
       DIAL_PHONE_NUMBER -> ActionType.CALL
+      CANCEL_WORKMANAGER_TASKS -> ActionType.CANCEL_WORKMANAGER_TASKS
+      GET_NOTIFICATION_PERMISSION -> ActionType.NOTIFICATION_PERMISSION
+      SET_NOTIFICATION_PERMISSION -> ActionType.OPEN_SETTINGS
+      SET_AS_DEFAULT_SMS_APP -> ActionType.CHANGE_DEFAULT
     }
   }
 }
 
 enum class ActionType {
-  GET_SMS, SEND_SMS, BACKGROUND, GET, PERMISSION, CALL
+  GET_SMS, SEND_SMS, BACKGROUND, GET, PERMISSION, CALL, CHANGE_DEFAULT, OPEN_SETTINGS, NOTIFICATION_PERMISSION, CANCEL_WORKMANAGER_TASKS
 }
 
 enum class ContentUri(val uri: Uri) {

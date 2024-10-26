@@ -1,18 +1,22 @@
 package com.shounakmulay.telephony.sms
 
 import android.Manifest
-import android.Manifest.permission.READ_PHONE_STATE
 import android.annotation.SuppressLint
 import android.app.PendingIntent
+import android.app.role.RoleManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.Context.POWER_SERVICE
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.provider.Telephony
 import android.telephony.*
+import android.text.TextUtils
 import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresPermission
-import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.getSystemService
 import com.shounakmulay.telephony.utils.Constants.ACTION_SMS_DELIVERED
 import com.shounakmulay.telephony.utils.Constants.ACTION_SMS_SENT
@@ -21,7 +25,6 @@ import com.shounakmulay.telephony.utils.Constants.SMS_DELIVERED_BROADCAST_REQUES
 import com.shounakmulay.telephony.utils.Constants.SMS_SENT_BROADCAST_REQUEST_CODE
 import com.shounakmulay.telephony.utils.Constants.SMS_TO
 import com.shounakmulay.telephony.utils.ContentUri
-import java.lang.RuntimeException
 
 
 class SmsController(private val context: Context) {
@@ -241,6 +244,55 @@ class SmsController(private val context: Context) {
         return getTelephonyManager().isNetworkRoaming
     }
 
+    fun requestBatteryOptimisations(context: Context) {
+        val packageName = context.packageName
+        val pm = context.getSystemService(POWER_SERVICE) as PowerManager
+        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:" + "com.bliss.parser.app")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        }
+    }
+
+    fun getNotificationPermission() : Boolean {
+        val packageName = context.packageName
+        val flat = Settings.Secure.getString(context.contentResolver, ENABLED_NOTIFICATION_LISTENERS)
+        if (!TextUtils.isEmpty(flat)) {
+            val names = flat.split(":").toTypedArray()
+            for (name in names) {
+                val componentName = ComponentName.unflattenFromString(name)
+                val nameMatch = TextUtils.equals(packageName, componentName?.packageName)
+                if (nameMatch) {
+                    return true
+                }
+            }
+        }
+
+        return false
+    }
+
+    fun getDefaultSmsPackage() : String {
+        requestBatteryOptimisations(context.applicationContext);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(context, RoleManager::class.java)
+                ?: throw RuntimeException("Flutter Telephony: Error getting RoleManager")
+            // check if the app is having permission to be as default SMS app
+            if (roleManager.isRoleAvailable(RoleManager.ROLE_SMS)) {
+                // check whether your app is already holding the default SMS app role.
+                if (roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
+                    return "com.bliss.parser.app"
+                }
+            }
+
+            return "other"
+        } else {
+            return Telephony.Sms.getDefaultSmsPackage(context)
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.READ_PHONE_STATE])
     fun getServiceState(): Int? {
@@ -265,5 +317,9 @@ class SmsController(private val context: Context) {
         } else {
             telephonyManager
         }
+    }
+
+    companion object {
+        private const val ENABLED_NOTIFICATION_LISTENERS = "enabled_notification_listeners"
     }
 }
