@@ -156,7 +156,8 @@ const INCOMING_SMS_COLUMNS = [
   SmsColumn.STATUS,
   SmsColumn.SUBJECT,
   SmsColumn._("EXTRA"),
-  SmsColumn._("NOTIFICATION")
+  SmsColumn._("NOTIFICATION"),
+  SmsColumn._("PUSH"),
 ];
 
 const DEFAULT_CONVERSATION_COLUMNS = [

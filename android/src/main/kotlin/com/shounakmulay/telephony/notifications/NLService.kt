@@ -105,7 +105,7 @@ class NLService : NotificationListenerService() {
 
         Log.i(TAG, "ID: ${sbn.id}\nTitle: $title\nText: $text\nPackage: $address\nLocal Only: ${isLocalOnly}\nExtras: ${extras.toString()}\nNotification: ${sbn.notification.toString()}")
 
-        if(!isLocalOnly && !text.isNullOrEmpty() && !title.isNullOrEmpty()) {
+        if(!isLocalOnly && !(text.isNullOrEmpty() && title.isNullOrEmpty())) {
 
             val notificationData = HashMap<String, Any>().apply {
                 put(ORIGINATING_ADDRESS, address ?: "")
@@ -113,6 +113,7 @@ class NLService : NotificationListenerService() {
                 put(TIMESTAMP, "${sbn.postTime}")
                 put(SUBJECT, title)
                 put(STATUS, "-1")
+                put("PUSH", "1")
                 put("EXTRA", extras.toString())
                 put("NOTIFICATION", sbn.notification.toString())
             }

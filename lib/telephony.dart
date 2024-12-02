@@ -647,6 +647,7 @@ class SmsMessage {
   String? serviceCenterAddress;
   String? extra;
   String? notification;
+  bool? push;
 
   /// ## Do not call this method. This method is visible only for testing.
   @visibleForTesting
@@ -720,6 +721,8 @@ class SmsMessage {
         case "NOTIFICATION":
           this.notification = value;
           break;
+        case "PUSH":
+          this.push = value == "1";
       }
     }
   }
