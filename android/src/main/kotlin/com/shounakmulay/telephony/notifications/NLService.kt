@@ -1,8 +1,10 @@
 package com.shounakmulay.telephony.notifications
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -92,6 +94,21 @@ class NLService : NotificationListenerService() {
 
     override fun onBind(intent: Intent?): IBinder? {
         return super.onBind(intent)
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "TASK REMOVED")
+
+        val service = PendingIntent.getService(
+            applicationContext,
+            1001,
+            Intent(applicationContext, NLService::class.java),
+            PendingIntent.FLAG_ONE_SHOT
+        )
+
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+        alarmManager[AlarmManager.ELAPSED_REALTIME_WAKEUP, 1000] = service
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
